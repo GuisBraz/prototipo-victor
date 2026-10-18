@@ -24,9 +24,9 @@ export async function saveReviewHandler(
     const snap = await tx.get(ref);
     if (!snap.exists) throw new HttpsError("not-found", "Leitura não encontrada.");
     const m = REVIEW_FIELD_REGEX.exec(field);
-    if (m?.[2] !== undefined) {
+    if (m?.[3] !== undefined) {
       const rows = (snap.data()?.output?.componentTable?.rows ?? []) as unknown[];
-      if (Number(m[2]) >= rows.length) throw new HttpsError("invalid-argument", "Linha inexistente.");
+      if (Number(m[3]) >= rows.length) throw new HttpsError("invalid-argument", "Linha inexistente.");
     }
     const previous = (snap.data()?.overrides ?? {})[field] ?? null;
     const ts = FieldValue.serverTimestamp();

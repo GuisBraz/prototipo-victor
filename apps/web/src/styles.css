@@ -74,3 +74,31 @@ input:focus, textarea:focus, select:focus, .btn:focus-visible { outline: 2px sol
   .sidebar-foot { display: none; }
   .form-grid { grid-template-columns: 1fr; }
 }
+
+/* ---------- Envio em lote ---------- */
+.dropzone { margin-top: 12px; border: 2px dashed var(--border); border-radius: 12px; padding: 22px; text-align: center; background: #fafbfc; }
+.dropzone.over { border-color: #1d4ed8; background: #eef4ff; }
+.problems { margin: 8px 0 0; padding-left: 18px; color: var(--danger); font-size: 0.9rem; }
+.small { font-size: 0.82rem; }
+.notice { background: #eef4ff; border: 1px solid #c7d7fe; border-radius: 8px; padding: 8px 12px; margin: 12px 0 0; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.8rem; font-weight: 600; background: #eef1f5; color: var(--muted); }
+.badge.ok { background: #e7f6ec; color: #116329; }
+.badge.busy { background: #fff4d6; color: #8a5a00; }
+.badge.bad { background: #fde8e7; color: var(--danger); }
+label.inline { flex-direction: row; align-items: center; gap: 8px; font-weight: 400; }
+.warn { color: #8a5a00; }
+
+/* ---------- BOM e conferência ---------- */
+.bom-wrap { max-height: 70vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+table.bom { font-size: 0.86rem; }
+table.bom th { position: sticky; top: 0; background: #f7f9fb; z-index: 1; }
+table.bom td, table.bom th { padding: 6px 8px; white-space: nowrap; }
+table.bom td:nth-child(5) { white-space: normal; min-width: 220px; }
+table.bom .num { text-align: right; }
+table.bom tr.assembly td { font-weight: 700; }
+table.bom td.check { background: #ffff00; cursor: pointer; }
+table.bom td.check:hover { outline: 2px solid #c9a400; outline-offset: -2px; }
+table.bom td.selected { outline: 2px solid #1d4ed8; outline-offset: -2px; }
+.review-panel { margin-top: 12px; border: 1px solid #c9a400; background: #fffde6; border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.review-panel .kv { margin: 0; }
+.check-msg { margin: 0; font-weight: 600; color: #6b4e00; }

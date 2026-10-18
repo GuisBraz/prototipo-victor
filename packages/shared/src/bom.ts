@@ -59,13 +59,18 @@ export interface DrawingRecord {
   readIssues: string[];
   readMode: ReadMode;
   pageCount: number | null;
+  /** Quantidade definida na conferência para desenho que nenhum conjunto chama. */
+  rootQuantity?: CheckedValue<number> | null;
+  /** Campos marcados como conferidos (o aviso some mesmo sem alterar o valor). */
+  acks?: string[];
 }
 
 // ---------- Correções da conferência ----------
 
 /**
- * Chave de um campo corrigível: `drawingNumber`, `revision`, `title`, `weight` (legenda)
- * ou `rows.<índice>.<coluna>` (lista de materiais).
+ * Chave de um campo corrigível: `drawingNumber`, `revision`, `title`, `weight` (legenda),
+ * `quantity` (quantidade de desenho não chamado por conjunto) ou `rows.<índice>.<coluna>`
+ * (lista de materiais). Com prefixo `ack.`: campo marcado como conferido.
  */
 export type OverrideKey = string;
 
@@ -78,6 +83,8 @@ export type DrawingOverrides = Record<OverrideKey, FieldOverride>;
 
 /** Campos da legenda que a conferência pode corrigir (chaves de `DrawingOverrides`). */
 export const EDITABLE_TITLE_FIELDS = ["drawingNumber", "revision", "title", "weight"] as const satisfies readonly TitleBlockField[];
+
+export const ACK_PREFIX = "ack.";
 
 export function overrideKeyForRow(rowIndex: number, column: ComponentColumn): OverrideKey {
   return `rows.${rowIndex}.${column}`;
@@ -248,9 +255,18 @@ export function drawingRecordFromExtraction(input: {
     readIssues.push(`Lista de materiais: ${ex.componentTable.note}`);
   }
 
+  const rootQuantity = ov.quantity
+    ? numberFromText({ value: ov.quantity.value, check: null }, parseQuantity, true)
+    : null;
+  const acks = Object.keys(ov)
+    .filter((k) => k.startsWith(ACK_PREFIX))
+    .map((k) => k.slice(ACK_PREFIX.length));
+
   return {
     documentId: input.documentId,
     fileName: input.fileName,
+    rootQuantity,
+    acks,
     drawingNumber: applyText(textValue(tb.drawingNumber, "Número do desenho"), ov.drawingNumber),
     revision: applyText(textValue(tb.revision, "Revisão"), ov.revision),
     title: applyText(textValue(tb.title, "Descrição"), ov.title),
@@ -280,6 +296,13 @@ export type BomColumn = (typeof BOM_COLUMNS)[number];
 
 export type BomRowKind = "assembly" | "part" | "no_drawing" | "unreferenced";
 
+/** De qual desenho e campo veio o valor de uma célula (para corrigir no lugar certo). */
+export interface CellSource {
+  documentId: string;
+  /** Chave de correção (ver `OverrideKey`). */
+  field: string;
+}
+
 export interface BomRow {
   /** 0 = conjunto raiz. */
   level: number;
@@ -297,6 +320,8 @@ export interface BomRow {
   documentId: string | null;
   /** Linha da lista de materiais do pai que chamou este item. */
   parentRow: { documentId: string; rowIndex: number } | null;
+  /** Origem de cada célula (o peso total é calculado e não tem origem). */
+  sources: Partial<Record<BomColumn, CellSource>>;
 }
 
 export type IssueSeverity = "high" | "medium" | "info";
@@ -474,6 +499,17 @@ export function buildBom(records: readonly DrawingRecord[]): BomResult {
           else delete checks.description;
         }
 
+        const fromRow = (col: string): CellSource => ({ documentId: parent.documentId, field: `rows.${row.rowIndex}.${col}` });
+        const fromChild = (field: string): CellSource => ({ documentId: child.documentId, field });
+        const sources: BomRow["sources"] = {
+          drawingNumber: approximate || row.componentNumber.check ? fromRow("componentNumber") : fromChild("drawingNumber"),
+          position: fromRow("itemPosition"),
+          revision: drawingRev !== null ? fromChild("revision") : fromRow("revision"),
+          description: row.description.value !== null ? fromRow("description") : fromChild("title"),
+          quantity: fromRow("quantity"),
+          unitWeight: child.unitWeightKg.value !== null ? fromChild("weight") : fromRow("weight"),
+        };
+
         const cycle = path.includes(child.documentId);
         rows.push({
           level,
@@ -488,6 +524,7 @@ export function buildBom(records: readonly DrawingRecord[]): BomResult {
           checks,
           documentId: child.documentId,
           parentRow: { documentId: parent.documentId, rowIndex: row.rowIndex },
+          sources,
         });
         emitted.add(child.documentId);
         if (!roleOf.has(child.documentId)) roleOf.set(child.documentId, child.hasComponentTable ? "assembly" : "part");
@@ -521,6 +558,18 @@ export function buildBom(records: readonly DrawingRecord[]): BomResult {
           checks,
           documentId: null,
           parentRow: { documentId: parent.documentId, rowIndex: row.rowIndex },
+          sources: Object.fromEntries(
+            (
+              [
+                ["drawingNumber", "componentNumber"],
+                ["position", "itemPosition"],
+                ["revision", "revision"],
+                ["description", "description"],
+                ["quantity", "quantity"],
+                ["unitWeight", "weight"],
+              ] as const
+            ).map(([col, field]) => [col, { documentId: parent.documentId, field: `rows.${row.rowIndex}.${field}` }]),
+          ),
         });
       }
       const last = rows[rows.length - 1]!;
@@ -530,12 +579,15 @@ export function buildBom(records: readonly DrawingRecord[]): BomResult {
     }
   };
 
-  const emitRoot = (r: DrawingRecord, kind: BomRowKind, quantity: number | null, extra?: string) => {
+  const emitRoot = (r: DrawingRecord, kind: BomRowKind, defaultQuantity: number | null, extra?: string) => {
     const checks: BomRow["checks"] = {};
     pushDrawingChecks(r, checks);
     if (r.title.check) checks.description = r.title.check;
     if (r.unitWeightKg.check) checks.unitWeight = r.unitWeightKg.check;
-    if (extra) checks.quantity = extra;
+    // Quantidade definida na conferência prevalece (ex.: desenho avulso no lote).
+    const quantity = r.rootQuantity ? r.rootQuantity.value : defaultQuantity;
+    if (r.rootQuantity?.check) checks.quantity = r.rootQuantity.check;
+    else if (extra && !r.rootQuantity) checks.quantity = extra;
     const total = mul(quantity, r.unitWeightKg.value);
     if (total === null) checks.totalWeight = checks.totalWeight ?? "Falta quantidade ou peso unitário para calcular";
     rows.push({
@@ -551,6 +603,13 @@ export function buildBom(records: readonly DrawingRecord[]): BomResult {
       checks,
       documentId: r.documentId,
       parentRow: null,
+      sources: {
+        drawingNumber: { documentId: r.documentId, field: "drawingNumber" },
+        revision: { documentId: r.documentId, field: "revision" },
+        description: { documentId: r.documentId, field: "title" },
+        quantity: { documentId: r.documentId, field: "quantity" },
+        unitWeight: { documentId: r.documentId, field: "weight" },
+      },
     });
     emitted.add(r.documentId);
   };
@@ -581,7 +640,17 @@ export function buildBom(records: readonly DrawingRecord[]): BomResult {
     issue("medium", r, "Desenho não é chamado por nenhum conjunto do lote nem citado em notas");
   }
 
-  // 5. Referências de nota que não estão no lote (informativo).
+  // 5. Avisos marcados como conferidos na revisão humana deixam de ser amarelos.
+  const acksByDoc = new Map(records.map((r) => [r.documentId, new Set(r.acks ?? [])]));
+  for (const row of rows) {
+    for (const col of Object.keys(row.checks) as BomColumn[]) {
+      const src = row.sources[col];
+      if (src && acksByDoc.get(src.documentId)?.has(src.field)) delete row.checks[col];
+    }
+    if (row.checks.totalWeight && row.totalWeightKg !== null) delete row.checks.totalWeight;
+  }
+
+  // 6. Referências de nota que não estão no lote (informativo).
   const allKeys = new Set(records.map((r) => (r.drawingNumber.value ? looseDrawingKey(r.drawingNumber.value) : "")));
   for (const r of records) {
     for (const n of r.noteReferences) {

@@ -265,3 +265,44 @@ describe("drawingRecordFromExtraction", () => {
     expect(r.unitWeightKg.check).toMatch(/não encontrado/);
   });
 });
+
+describe("conferência: origem das células, 'conferido' e quantidade avulsa", () => {
+  it("cada célula aponta o desenho e o campo de onde veio", () => {
+    const peca = drawing("DT-1", { weight: 2 });
+    const cj = drawing("CJ", { rows: [row("DT-1", 3), row(null, 4)] });
+    const r = buildBom([peca, cj]);
+    const filho = r.rows[1]!;
+    const idx = cj.rows[0]!.rowIndex;
+    expect(filho.sources.quantity).toEqual({ documentId: cj.documentId, field: `rows.${idx}.quantity` });
+    expect(filho.sources.unitWeight).toEqual({ documentId: peca.documentId, field: "weight" });
+    expect(filho.sources.drawingNumber).toEqual({ documentId: peca.documentId, field: "drawingNumber" });
+    expect(r.rows[2]!.sources.drawingNumber!.field).toMatch(/componentNumber$/);
+    expect(r.rows[0]!.sources.quantity).toEqual({ documentId: cj.documentId, field: "quantity" });
+  });
+
+  it("marcar como conferido remove o amarelo daquela célula", () => {
+    const cj = drawing("CJ", { rows: [row("ROL-1", 2)] });
+    const field = `rows.${cj.rows[0]!.rowIndex}.componentNumber`;
+    expect(buildBom([cj]).rows[1]!.checks.drawingNumber).toBeTruthy();
+    const conferido = { ...cj, acks: [field] };
+    expect(buildBom([conferido]).rows[1]!.checks.drawingNumber).toBeUndefined();
+  });
+
+  it("quantidade definida para desenho avulso entra no cálculo", () => {
+    const solto = { ...drawing("DT-SOLTO", { weight: 5 }), rootQuantity: { value: 3, check: null } };
+    const r = buildBom([solto]);
+    expect(r.rows[0]).toMatchObject({ kind: "unreferenced", quantityTotal: 3, totalWeightKg: 15 });
+    expect(r.rows[0]!.checks.quantity).toBeUndefined();
+  });
+
+  it("extração: override 'quantity' e chaves 'ack.' viram rootQuantity e acks", () => {
+    const rec = drawingRecordFromExtraction({
+      documentId: "d1",
+      fileName: "x.pdf",
+      extraction: extraction(),
+      overrides: { quantity: { value: "2" }, "ack.revision": { value: null } },
+    });
+    expect(rec.rootQuantity).toMatchObject({ value: 2, check: null });
+    expect(rec.acks).toEqual(["revision"]);
+  });
+});

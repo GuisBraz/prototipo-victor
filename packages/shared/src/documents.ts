@@ -209,7 +209,7 @@ export const PROCESSING_ERROR_MESSAGES_PT: Record<string, string> = {
 
 /** Chave de campo corrigível: campo da legenda ou `rows.<i>.<coluna>` da lista de materiais. */
 export const REVIEW_FIELD_REGEX =
-  /^(drawingNumber|revision|title|weight|rows\.(\d{1,4})\.(itemPosition|componentNumber|revision|description|quantity|weight))$/;
+  /^(ack\.)?(drawingNumber|revision|title|weight|quantity|rows\.(\d{1,4})\.(itemPosition|componentNumber|revision|description|quantity|weight))$/;
 
 export const saveReviewInputSchema = z.object({
   organizationId: id,

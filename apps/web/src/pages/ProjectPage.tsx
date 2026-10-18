@@ -1,16 +1,23 @@
 import { Link, useParams } from "react-router-dom";
+import { useDocuments } from "../documents";
+import { useBom, useExtractions } from "../extractions";
 import { useOrganizations } from "../organizations";
 import { useProject } from "../projects";
+import { BomSection } from "./BomSection";
 import { DocumentsSection } from "./DocumentsSection";
 
 /**
- * Página do projeto: visão geral e documentos (Fase 2). Dados sempre reais.
- * Desenhos, BOM, pendências e histórico entram nas fases seguintes.
+ * Página do projeto (um lote de desenhos): 1) enviar os desenhos; 2) conferir a BOM montada
+ * a partir da leitura por IA e baixar a planilha "Controle de Avanço" com o relatório.
  */
 export function ProjectPage() {
   const { projectId } = useParams();
   const { current } = useOrganizations();
-  const { project, loading } = useProject(current?.organizationId ?? null, projectId);
+  const organizationId = current?.organizationId ?? null;
+  const { project, loading } = useProject(organizationId, projectId);
+  const docs = useDocuments(organizationId, projectId);
+  const extractions = useExtractions(organizationId, projectId);
+  const bom = useBom(extractions.byId);
 
   if (loading) return <p className="muted">Carregando…</p>;
   if (!project) {
@@ -22,21 +29,23 @@ export function ProjectPage() {
     );
   }
 
+  const pendingReadings = docs.rows.filter((r) => r.job?.status === "queued" || r.job?.status === "running").length;
+
   return (
     <>
       <p className="muted"><Link to="/projects">Projetos</Link> / {project.code}</p>
       <h1>{project.name}</h1>
-      <section className="card">
-        <h2>Visão geral</h2>
-        <dl className="kv">
-          <dt>Código</dt><dd>{project.code}</dd>
-          <dt>Status</dt><dd>{project.status === "active" ? "Ativo" : "Arquivado"}</dd>
-          <dt>Descrição</dt><dd>{project.description || "—"}</dd>
-          <dt>Atualizado</dt><dd>{project.updatedAt ? project.updatedAt.toLocaleString("pt-BR") : "—"}</dd>
-        </dl>
-        <p className="muted">A geração de BOM será adicionada nas próximas fases.</p>
-      </section>
-      <DocumentsSection projectId={project.id} />
+      {project.description && <p className="muted" style={{ margin: 0 }}>{project.description}</p>}
+      <DocumentsSection projectId={project.id} rows={docs.rows} loading={docs.loading} error={docs.error} />
+      <BomSection
+        projectId={project.id}
+        projectName={project.name}
+        projectCode={project.code}
+        bom={bom}
+        extractions={extractions.byId}
+        pendingReadings={pendingReadings}
+      />
+      {extractions.error && <p className="error">Não foi possível carregar as leituras.</p>}
     </>
   );
 }

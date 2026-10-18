@@ -12,10 +12,10 @@ const row = (i: number, code: string, qty: number): ComponentRecord => ({
   rowIndex: i,
   position: ok(String(i + 1)),
   componentNumber: ok(code),
-  revision: ok(null),
+  revision: ok<string>(null),
   description: ok(`DESC ${code}`),
   quantity: ok(qty),
-  weightKg: ok(null),
+  weightKg: ok<number>(null),
   evidence: { page: 1, snippet: null },
 });
 const drawing = (n: string, weight: CheckedValue<number>, rows: ComponentRecord[] = []): DrawingRecord => ({

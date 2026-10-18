@@ -1,55 +1,69 @@
-import { useRef, useState } from "react";
-import { hasAtLeastRole, type DocumentStatus, type JobStatus } from "@mecabom/shared";
+import { useRef, useState, type DragEvent } from "react";
+import { PROCESSING_ERROR_MESSAGES_PT, hasAtLeastRole } from "@mecabom/shared";
 import { friendlyError } from "../errors";
-import { reprocessDocument, uploadPdf, useDocuments, type UploadOutcome } from "../documents";
+import { reprocessDocument, uploadPdf, type DocumentRow } from "../documents";
 import { formatBytes } from "../uploadRules";
 import { useOrganizations } from "../organizations";
+import { filesFromDrop, runPool, splitPdfs } from "../uploadQueue";
 
-const DOCUMENT_STATUS_PT: Record<DocumentStatus, string> = {
-  uploaded: "Recebido",
-  validated: "Validado",
-  rejected: "Rejeitado",
-  queued: "Na fila",
-  processing: "Processando",
-  processed: "Processado",
-  failed: "Falhou",
-};
-
-const JOB_STATUS_PT: Record<JobStatus, string> = {
-  queued: "Aguardando processamento",
-  running: "Em execução",
-  succeeded: "Concluído",
-  failed: "Falhou",
-  cancelled: "Cancelado",
-};
+/** Envios simultâneos ao servidor (o limite de sessões pendentes por usuário é 20). */
+const UPLOAD_CONCURRENCY = 3;
 
 interface Attempt {
   id: number;
   fileName: string;
-  state: "sending" | UploadOutcome["kind"] | "error";
+  state: "waiting" | "sending" | "accepted" | "duplicate" | "rejected" | "error";
   message?: string;
 }
 
-/** Envio e lista de PDFs do projeto. O processamento por IA entra nas próximas etapas da Fase 2. */
-export function DocumentsSection({ projectId }: { projectId: string }) {
+function readingStatus(r: DocumentRow): { label: string; tone: "ok" | "busy" | "bad" | "idle"; detail?: string } {
+  const job = r.job;
+  if (r.document.status === "rejected") return { label: "Rejeitado", tone: "bad" };
+  if (!job) return { label: "Recebido", tone: "idle" };
+  switch (job.status) {
+    case "queued":
+      return { label: "Na fila para leitura", tone: "busy" };
+    case "running":
+      return { label: "Lendo com IA…", tone: "busy" };
+    case "succeeded":
+      return { label: "Lido", tone: "ok" };
+    case "failed":
+      return {
+        label: "Falhou",
+        tone: "bad",
+        detail: job.errorCode ? (PROCESSING_ERROR_MESSAGES_PT[job.errorCode] ?? PROCESSING_ERROR_MESSAGES_PT.internal) : undefined,
+      };
+    default:
+      return { label: "Cancelado", tone: "idle" };
+  }
+}
+
+/** Envio de desenhos (arquivos ou pasta inteira) e acompanhamento da leitura. */
+export function DocumentsSection({ projectId, rows, loading, error }: { projectId: string; rows: DocumentRow[]; loading: boolean; error: boolean }) {
   const { current } = useOrganizations();
   const organizationId = current?.organizationId ?? null;
-  const { rows, loading, error } = useDocuments(organizationId, projectId);
   const [attempts, setAttempts] = useState<Attempt[]>([]);
-  const [reprocessError, setReprocessError] = useState<string | null>(null);
+  const [ignored, setIgnored] = useState<string[]>([]);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [showAll, setShowAll] = useState(false);
   const nextId = useRef(1);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const filesRef = useRef<HTMLInputElement>(null);
+  const folderRef = useRef<HTMLInputElement | null>(null);
 
   const canUpload = current ? hasAtLeastRole(current.role, "reviewer") : false;
 
   const update = (id: number, patch: Partial<Attempt>) =>
     setAttempts((list) => list.map((a) => (a.id === id ? { ...a, ...patch } : a)));
 
-  async function handleFiles(files: FileList | null) {
-    if (!files || !organizationId) return;
-    for (const file of Array.from(files)) {
-      const id = nextId.current++;
-      setAttempts((list) => [{ id, fileName: file.name, state: "sending" }, ...list]);
+  async function handleFiles(all: File[]) {
+    if (!organizationId || all.length === 0) return;
+    const { pdfs, ignored: other } = splitPdfs(all);
+    setIgnored(other.map((f) => f.name));
+    const batch = pdfs.map((file) => ({ id: nextId.current++, file }));
+    setAttempts((list) => [...batch.map(({ id, file }) => ({ id, fileName: file.name, state: "waiting" as const })), ...list]);
+    await runPool(batch, UPLOAD_CONCURRENCY, async ({ id, file }) => {
+      update(id, { state: "sending" });
       try {
         const outcome = await uploadPdf(organizationId, projectId, file);
         update(id, {
@@ -58,113 +72,174 @@ export function DocumentsSection({ projectId }: { projectId: string }) {
             outcome.kind === "rejected"
               ? outcome.message
               : outcome.kind === "duplicate"
-                ? "Este arquivo já foi enviado antes neste projeto; nada foi duplicado."
+                ? "Já enviado antes neste projeto; nada foi duplicado."
                 : undefined,
         });
       } catch (e) {
-        // Falha de um arquivo não interrompe os demais.
         update(id, { state: "error", message: friendlyError(e) });
       }
-    }
-    if (inputRef.current) inputRef.current.value = "";
+    });
+    if (filesRef.current) filesRef.current.value = "";
+    if (folderRef.current) folderRef.current.value = "";
   }
 
-  async function handleReprocess(documentId: string) {
+  async function onDrop(e: DragEvent) {
+    e.preventDefault();
+    setDragging(false);
+    if (!canUpload) return;
+    await handleFiles(await filesFromDrop(e.dataTransfer));
+  }
+
+  async function reprocess(ids: string[]) {
     if (!organizationId) return;
-    setReprocessError(null);
-    try {
-      await reprocessDocument(organizationId, projectId, documentId);
-    } catch (e) {
-      setReprocessError(friendlyError(e));
-    }
+    setActionError(null);
+    await runPool(ids, 3, async (documentId) => {
+      try {
+        await reprocessDocument(organizationId, projectId, documentId);
+      } catch (e) {
+        setActionError(friendlyError(e));
+      }
+    });
   }
 
-  const stateLabel = (a: Attempt) =>
-    ({
-      sending: "Enviando…",
-      accepted: "Recebido e na fila",
-      duplicate: "Duplicado",
-      rejected: "Rejeitado",
-      error: "Erro",
-    })[a.state];
+  const count = (s: Attempt["state"]) => attempts.filter((a) => a.state === s).length;
+  const inFlight = count("waiting") + count("sending");
+  const problems = attempts.filter((a) => a.state === "rejected" || a.state === "error");
+
+  const reading = rows.filter((r) => r.job?.status === "queued" || r.job?.status === "running").length;
+  const done = rows.filter((r) => r.job?.status === "succeeded").length;
+  const failed = rows.filter((r) => r.job?.status === "failed");
+  const visible = showAll ? rows : rows.slice(0, 25);
 
   return (
     <section className="card">
-      <h2>Documentos</h2>
+      <div className="row">
+        <h2 style={{ margin: 0 }}>1. Desenhos</h2>
+        <span className="spacer" />
+        {rows.length > 0 && (
+          <span className="muted">
+            {rows.length} desenho(s) · {done} lido(s) · {reading} em leitura · {failed.length} com falha
+          </span>
+        )}
+      </div>
 
       {canUpload ? (
-        <div className="row" style={{ marginBottom: 12 }}>
+        <div
+          className={`dropzone${dragging ? " over" : ""}`}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => void onDrop(e)}
+        >
+          <p style={{ margin: 0, fontWeight: 600 }}>Arraste aqui os desenhos em PDF ou uma pasta inteira</p>
+          <p className="muted" style={{ margin: "4px 0 12px" }}>PDF digital ou escaneado, até 30 MB e 100 páginas cada. DWG ainda não é lido.</p>
+          <div className="row" style={{ justifyContent: "center" }}>
+            <button className="btn" onClick={() => filesRef.current?.click()}>Selecionar arquivos</button>
+            <button className="btn" onClick={() => folderRef.current?.click()}>Selecionar pasta</button>
+          </div>
           <input
-            ref={inputRef}
+            ref={filesRef}
             type="file"
             accept="application/pdf,.pdf"
             multiple
-            onChange={(e) => void handleFiles(e.target.files)}
+            hidden
+            onChange={(e) => void handleFiles([...(e.target.files ?? [])])}
           />
-          <span className="muted">PDF de até 30 MB e 100 páginas. O arquivo é verificado no servidor.</span>
+          <input
+            ref={(el) => {
+              folderRef.current = el;
+              // Atributos não padronizados para escolher uma pasta (Chrome, Edge, Firefox).
+              el?.setAttribute("webkitdirectory", "");
+              el?.setAttribute("directory", "");
+            }}
+            type="file"
+            multiple
+            hidden
+            onChange={(e) => void handleFiles([...(e.target.files ?? [])])}
+          />
         </div>
       ) : (
         <p className="muted">Seu papel não permite enviar documentos.</p>
       )}
 
       {attempts.length > 0 && (
-        <ul className="muted" style={{ paddingLeft: 18 }}>
-          {attempts.map((a) => (
+        <p className="muted" style={{ margin: "12px 0 0" }}>
+          Envio: {count("accepted")} recebido(s) · {count("duplicate")} duplicado(s) · {problems.length} com problema
+          {inFlight > 0 ? ` · enviando ${inFlight}…` : ""}
+        </p>
+      )}
+      {ignored.length > 0 && (
+        <p className="muted" style={{ margin: "4px 0 0" }}>
+          {ignored.length} arquivo(s) que não são PDF foram ignorados{ignored.length <= 5 ? `: ${ignored.join(", ")}` : ""}.
+        </p>
+      )}
+      {problems.length > 0 && (
+        <ul className="problems">
+          {problems.map((a) => (
             <li key={a.id}>
-              <strong>{a.fileName}</strong> — {stateLabel(a)}
-              {a.message ? `: ${a.message}` : ""}
+              <strong>{a.fileName}</strong>: {a.message}
             </li>
           ))}
         </ul>
       )}
 
-      {reprocessError && <p className="error">{reprocessError}</p>}
+      {actionError && <p className="error">{actionError}</p>}
       {error && <p className="error">Não foi possível carregar os documentos.</p>}
       {loading && <p className="muted">Carregando…</p>}
 
-      {!loading && !error && rows.length === 0 && (
-        <p className="muted">Nenhum documento enviado ainda.</p>
-      )}
-
       {rows.length > 0 && (
-        <table>
-          <thead>
-            <tr>
-              <th>Arquivo</th>
-              <th>Páginas</th>
-              <th>Tamanho</th>
-              <th>Situação</th>
-              <th>Enviado em</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => {
-              const jobStatus = r.job?.status;
-              const canReprocess =
-                canUpload && jobStatus !== undefined && jobStatus !== "queued" && jobStatus !== "running";
-              return (
-                <tr key={r.id}>
-                  <td>{r.document.fileName}</td>
-                  <td>{r.document.pageCount}</td>
-                  <td>{formatBytes(r.document.sizeBytes)}</td>
-                  <td>
-                    {DOCUMENT_STATUS_PT[r.document.status]}
-                    {jobStatus ? <span className="muted"> · {JOB_STATUS_PT[jobStatus]}</span> : null}
-                  </td>
-                  <td>{r.createdAt ? r.createdAt.toLocaleString("pt-BR") : "—"}</td>
-                  <td>
-                    {canReprocess && (
-                      <button className="btn link" onClick={() => void handleReprocess(r.id)}>
-                        Reprocessar
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <>
+          {failed.length > 0 && canUpload && (
+            <p style={{ margin: "12px 0 0" }}>
+              <button className="btn" onClick={() => void reprocess(failed.map((r) => r.id))}>
+                Reprocessar {failed.length} com falha
+              </button>
+            </p>
+          )}
+          <table style={{ marginTop: 12 }}>
+            <thead>
+              <tr>
+                <th>Arquivo</th>
+                <th>Páginas</th>
+                <th>Tamanho</th>
+                <th>Leitura</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((r) => {
+                const st = readingStatus(r);
+                const jobStatus = r.job?.status;
+                const canReprocess = canUpload && jobStatus !== undefined && jobStatus !== "queued" && jobStatus !== "running";
+                return (
+                  <tr key={r.id}>
+                    <td>{r.document.fileName}</td>
+                    <td>{r.document.pageCount}</td>
+                    <td>{formatBytes(r.document.sizeBytes)}</td>
+                    <td>
+                      <span className={`badge ${st.tone}`}>{st.label}</span>
+                      {st.detail && <div className="muted small">{st.detail}</div>}
+                    </td>
+                    <td>
+                      {canReprocess && (
+                        <button className="btn link" onClick={() => void reprocess([r.id])}>
+                          Ler de novo
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {rows.length > 25 && (
+            <button className="btn link" onClick={() => setShowAll((v) => !v)}>
+              {showAll ? "Mostrar menos" : `Mostrar todos os ${rows.length}`}
+            </button>
+          )}
+        </>
       )}
     </section>
   );
