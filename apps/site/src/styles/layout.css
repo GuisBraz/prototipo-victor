@@ -1,0 +1,33 @@
+/* Cabeçalho */
+.site-header { position: sticky; top: 0; z-index: 50; background: var(--navy); color: #fff; border-bottom: 1px solid transparent; transition: border-color 0.2s, box-shadow 0.2s; }
+.site-header.is-scrolled { border-bottom-color: rgb(255 255 255 / 12%); box-shadow: 0 6px 20px -10px rgb(0 0 0 / 50%); }
+.site-header__bar { display: flex; align-items: center; gap: 28px; height: var(--header-h); }
+.logo { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 800; font-stretch: 112%; letter-spacing: 0.04em; font-size: 1.15rem; margin-right: auto; }
+.site-nav ul { display: flex; gap: 4px; }
+.site-nav a { display: block; white-space: nowrap; padding: 8px 12px; text-decoration: none; font-size: 0.95rem; font-weight: 500; color: #d6e0e8; border-radius: var(--radius); }
+.site-nav a:hover { color: #fff; background: rgb(255 255 255 / 8%); }
+.site-header__cta { min-height: 42px; padding: 8px 18px; font-size: 0.95rem; }
+.menu-toggle { display: none; background: none; border: 0; color: #fff; padding: 10px; cursor: pointer; border-radius: var(--radius); }
+.mobile-menu { background: var(--navy-deep); border-top: 1px solid rgb(255 255 255 / 12%); }
+.mobile-menu[hidden] { display: none; }
+.mobile-menu nav { padding: 12px var(--gutter) 24px; display: flex; flex-direction: column; gap: 16px; }
+.mobile-menu a:not(.btn) { display: block; padding: 14px 4px; text-decoration: none; border-bottom: 1px solid rgb(255 255 255 / 10%); font-size: 1.05rem; }
+
+@media (max-width: 1040px) {
+  .site-nav, .site-header__cta { display: none; }
+  .menu-toggle { display: inline-flex; }
+}
+@media (min-width: 1041px) {
+  .mobile-menu { display: none !important; }
+}
+
+/* Rodapé */
+.site-footer { background: var(--navy-deep); color: #c3cfd9; padding: 64px 0 32px; font-size: 0.95rem; }
+.site-footer__grid { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 40px; }
+.site-footer h2 { font-size: 0.95rem; color: #fff; font-weight: 650; margin-bottom: 14px; }
+.site-footer ul { display: grid; gap: 8px; }
+.site-footer a { text-decoration: none; }
+.site-footer a:hover { color: #fff; text-decoration: underline; }
+.site-footer p { max-width: 42ch; margin-top: 14px; }
+.site-footer__legal { margin-top: 48px; padding-top: 24px; border-top: 1px solid rgb(255 255 255 / 12%); display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; font-size: 0.85rem; color: #98a9b6; }
+@media (max-width: 760px) { .site-footer__grid { grid-template-columns: 1fr; } }

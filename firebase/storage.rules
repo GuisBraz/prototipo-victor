@@ -1,0 +1,31 @@
+rules_version = '2';
+
+// Princípios (docs/SECURITY.md):
+//  - Negar por padrão. Nenhuma leitura direta pelo cliente: downloads futuros
+//    usarão URL assinada de curta duração emitida pelo servidor após autorização.
+//  - Fase 2: o cliente só pode CRIAR o objeto de uma sessão de upload que o
+//    servidor abriu para ele (caminho definido pelo servidor, nunca por nome de
+//    arquivo), dentro do tamanho declarado e limite máximo, como application/pdf.
+//    A validação do CONTEÚDO real acontece no servidor (finalizeUpload); estas
+//    regras são só a primeira barreira. O Admin SDK não é limitado por elas.
+//  - Requer que o serviço de Rules do Storage possa ler o Firestore (firestore.get).
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    match /organizations/{orgId}/projects/{projectId}/incoming/{uploadId} {
+      allow create: if request.auth != null
+        && request.resource.contentType == 'application/pdf'
+        && request.resource.size > 0
+        && request.resource.size <= 30 * 1024 * 1024
+        && firestore.exists(/databases/(default)/documents/organizations/$(orgId)/projects/$(projectId)/uploads/$(uploadId))
+        && firestore.get(/databases/(default)/documents/organizations/$(orgId)/projects/$(projectId)/uploads/$(uploadId)).data.createdBy == request.auth.uid
+        && firestore.get(/databases/(default)/documents/organizations/$(orgId)/projects/$(projectId)/uploads/$(uploadId)).data.status == 'pending'
+        && request.resource.size <= firestore.get(/databases/(default)/documents/organizations/$(orgId)/projects/$(projectId)/uploads/$(uploadId)).data.declaredSizeBytes;
+      allow read, update, delete: if false;
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

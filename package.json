@@ -1,0 +1,33 @@
+{
+  "name": "mecabom",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Plataforma inteligente de leitura de desenhos mecânicos e geração de BOM",
+  "workspaces": [
+    "packages/*",
+    "firebase/tests",
+    "functions",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build:shared": "npm run build -w @mecabom/shared",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:rules": "firebase emulators:exec --only firestore,storage --project demo-mecabom \"npm run test:rules -w @mecabom/firebase-rules-tests\"",
+    "emulators": "firebase emulators:start --project demo-mecabom",
+    "test:functions": "firebase emulators:exec --only firestore --project demo-mecabom \"npm run test -w @mecabom/functions\"",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^26.6.5",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "firebase-tools": "^15.33.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.71.2"
+  }
+}

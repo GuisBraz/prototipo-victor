@@ -1,0 +1,15 @@
+# Publicação do site de apresentação (apps/site) no Netlify.
+[build]
+  command = "npm install && npm run build -w @mecabom/site"
+  publish = "apps/site/dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# Pede aos buscadores que não indexem nada (inclui os PDFs de exemplo, que não têm <meta>).
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"

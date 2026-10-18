@@ -1,0 +1,25 @@
+{
+  "name": "@mecabom/functions",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "bundle/index.js",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --no-file-parallelism"
+  },
+  "dependencies": {
+    "@mecabom/shared": "*",
+    "firebase-admin": "^13.0.0",
+    "firebase-functions": "^7.4.0",
+    "pdf-lib": "^1.17.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.12",
+    "vitest": "^2.1.0"
+  }
+}

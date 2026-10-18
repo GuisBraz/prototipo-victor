@@ -1,0 +1,19 @@
+node_modules/
+dist/
+functions/bundle/
+build/
+.env
+.env.*
+!.env.example
+*.log
+.firebase/
+firebase-debug.log
+.DS_Store
+coverage/
+*.pem
+serviceAccount*.json
+
+# Desenhos reais de clientes: nunca versionar
+samples/
+desenhos/
+*.tiff

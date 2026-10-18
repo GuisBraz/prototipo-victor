@@ -1,0 +1,92 @@
+rules_version = '2';
+
+// Princípios (docs/DATA_MODEL.md §5 e docs/SECURITY.md):
+//  - Negar por padrão.
+//  - Leitura: apenas membro ATIVO da organização.
+//  - Escrita pelo cliente: nenhuma (Fases 1 e 2). Toda escrita passa por callables
+//    (Admin SDK), que validam entrada, papel e geram auditoria.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function memberDoc(orgId) {
+      return get(/databases/$(database)/documents/organizations/$(orgId)/members/$(request.auth.uid));
+    }
+
+    function isActiveMember(orgId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/organizations/$(orgId)/members/$(request.auth.uid))
+        && memberDoc(orgId).data.status == 'active';
+    }
+
+    function isAdmin(orgId) {
+      return isActiveMember(orgId) && memberDoc(orgId).data.role == 'admin';
+    }
+
+    // Espelho das organizações do próprio usuário (somente leitura).
+    match /users/{uid}/memberships/{orgId} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    match /organizations/{orgId} {
+      allow read: if isActiveMember(orgId);
+      allow write: if false;
+
+      match /members/{memberId} {
+        allow read: if isActiveMember(orgId);
+        allow write: if false;
+      }
+
+      match /projects/{projectId} {
+        allow read: if isActiveMember(orgId);
+        allow write: if false;
+
+        // Fase 2: documentos e jobs são lidos por membros; escritos só pelo servidor.
+        match /documents/{documentId} {
+          allow read: if isActiveMember(orgId);
+          allow write: if false;
+        }
+
+        match /jobs/{jobId} {
+          allow read: if isActiveMember(orgId);
+          allow write: if false;
+        }
+
+        // Sessões de upload: o criador acompanha o próprio envio (resultado/rejeição).
+        match /uploads/{uploadId} {
+          allow read: if isActiveMember(orgId) && resource.data.createdBy == request.auth.uid;
+          allow write: if false;
+        }
+
+        // Índice (projeto, hash) para deduplicação: uso interno do servidor.
+        match /documentHashes/{hash} {
+          allow read, write: if false;
+        }
+      }
+
+      // Índice de unicidade de código de projeto: uso interno do servidor.
+      match /projectCodes/{code} {
+        allow read, write: if false;
+      }
+
+      match /auditEvents/{eventId} {
+        allow read: if isAdmin(orgId);
+        allow write: if false;
+      }
+    }
+
+    // Qualquer outro caminho: negado.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
