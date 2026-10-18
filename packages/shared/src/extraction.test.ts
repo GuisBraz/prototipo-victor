@@ -46,11 +46,14 @@ function sample() {
         {
           itemPosition: "1",
           componentNumber: "PC-101",
+          revision: null,
           description: "CHAPA BASE",
           quantity: "2",
           unit: "PÇ",
           material: "SAE 1020",
+          weight: null,
           page: 1,
+          uncertainColumns: [],
           snippet: "1 PC-101 CHAPA BASE 2 PÇ SAE 1020",
           isExplicit: true,
           note: null,
@@ -58,6 +61,7 @@ function sample() {
       ],
       note: null,
     },
+    noteReferences: [],
     issues: [],
   };
 }

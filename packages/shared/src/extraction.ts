@@ -35,10 +35,14 @@ export const AI_EXTRACTION_CONFIG = {
   /** Teto de saída por chamada (inclui o raciocínio). Valores altos exigem streaming no SDK. */
   maxOutputTokens: 32000,
   refusalFallback: "default",
-  /** Versão do prompt: functions/src/ai/prompts/drawingExtraction.v1.ts. */
-  promptVersion: "drawing-extraction.v1",
+  /** Versão do prompt: functions/src/ai/prompts/drawingExtraction.v2.ts. */
+  promptVersion: "drawing-extraction.v2",
   /** Versão do contrato de saída abaixo. Mudou o schema, sobe a versão. */
-  outputSchemaVersion: 1,
+  outputSchemaVersion: 2,
+  /** Máximo de ampliações (ferramenta de recorte) por desenho; evita laços longos e custo sem teto. */
+  maxRegionViews: 12,
+  /** Lado maior, em pixels, das imagens enviadas (limite de alta resolução do modelo). */
+  imageLongEdgePx: 2576,
 } as const;
 
 export type AiExtractionConfig = typeof AI_EXTRACTION_CONFIG;
@@ -91,10 +95,12 @@ export type TitleBlockField = (typeof TITLE_BLOCK_FIELDS)[number];
 export const COMPONENT_COLUMNS = [
   "itemPosition",
   "componentNumber",
+  "revision",
   "description",
   "quantity",
   "unit",
   "material",
+  "weight",
 ] as const;
 export type ComponentColumn = (typeof COMPONENT_COLUMNS)[number];
 
@@ -169,6 +175,8 @@ export const componentRowObject = z
     page,
     snippet: nullableText,
     isExplicit: z.boolean(),
+    /** Colunas desta linha cuja leitura não é segura (viram "conferir" na planilha). */
+    uncertainColumns: z.array(lowerEnum(COMPONENT_COLUMNS)),
     note: nullableText,
   })
   .strict();
@@ -196,12 +204,26 @@ export const extractionIssueObject = z
   })
   .strict();
 
+/**
+ * Desenho citado só em notas ou detalhes ("VER DESENHO X"), fora da lista de materiais.
+ * Não entra na hierarquia da BOM; aparece no relatório como desenho de detalhe.
+ */
+export const noteReferenceObject = z
+  .object({
+    drawingNumber: text,
+    page: page.nullable(),
+    snippet: nullableText,
+  })
+  .strict();
+export type NoteReference = z.infer<typeof noteReferenceObject>;
+
 export const extractionOutputSchema = z
   .object({
     titleBlock: titleBlockObject,
     documentType: documentTypeObject,
     weightScope: lowerEnum(WEIGHT_SCOPES),
     componentTable: componentTableSchema,
+    noteReferences: z.array(noteReferenceObject),
     issues: z.array(extractionIssueObject),
   })
   .strict();
@@ -227,6 +249,7 @@ export function validateExtractionOutput(
   for (const f of TITLE_BLOCK_FIELDS) checkPage(out.titleBlock[f].page, `titleBlock.${f}.page`);
   checkPage(out.documentType.basis.page, "documentType.basis.page");
   out.componentTable.rows.forEach((r, i) => checkPage(r.page, `componentTable.rows.${i}.page`));
+  out.noteReferences.forEach((r, i) => checkPage(r.page, `noteReferences.${i}.page`));
   out.issues.forEach((it, i) => checkPage(it.page, `issues.${i}.page`));
   return errors.length > 0 ? { ok: false, errors } : { ok: true, data: out };
 }
@@ -279,11 +302,20 @@ export const extractionJsonSchema = {
           page: { type: "integer" },
           snippet: nullable(jsonText),
           isExplicit: { type: "boolean" },
+          uncertainColumns: { type: "array", items: { type: "string", enum: [...COMPONENT_COLUMNS] } },
           note: nullable(jsonText),
         }),
       },
       note: nullable(jsonText),
     }),
+    noteReferences: {
+      type: "array",
+      items: obj({
+        drawingNumber: jsonText,
+        page: nullable({ type: "integer" }),
+        snippet: nullable(jsonText),
+      }),
+    },
     issues: {
       type: "array",
       items: obj({
@@ -293,6 +325,6 @@ export const extractionJsonSchema = {
       }),
     },
   },
-  required: ["titleBlock", "documentType", "weightScope", "componentTable", "issues"],
+  required: ["titleBlock", "documentType", "weightScope", "componentTable", "noteReferences", "issues"],
   additionalProperties: false,
 } as const;
