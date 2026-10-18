@@ -2,7 +2,15 @@
 
 Plataforma web para ler desenhos mecânicos industriais em PDF com apoio de IA e gerar listas de materiais (BOM) rastreáveis, com revisão humana, versionamento e exportação.
 
-> **Status: Fase 1 (fundação) em andamento.** Existem: schemas compartilhados, regras do Firestore/Storage, functions de organização e projeto e um frontend com login, organização e projetos. **Não existem ainda:** upload de PDF, processamento, integração com a Anthropic e BOM. Veja `docs/SETUP.md`.
+> **Status: alfa (18/10/2026).** Fluxo completo implementado: envio de desenhos em PDF (arquivos ou pasta), leitura por IA (Claude Opus 5.5, com ampliação de regiões para folhas grandes e PDFs escaneados), montagem da BOM hierárquica pai → filho pela lista de materiais, conferência das células duvidosas (amarelo) e exportação na planilha **Controle de Avanço** (.xlsx) com aba de relatório. **Ainda não:** leitura real testada com a chave da API, medição de precisão, DWG e deploy. Veja `docs/SETUP.md` §3a.
+
+## Como funciona
+
+1. Crie um projeto (um lote de desenhos).
+2. Arraste os PDFs ou uma pasta inteira. Cada desenho é validado e entra na fila de leitura.
+3. A IA lê a legenda (desenho, revisão, descrição, peso) e a lista de materiais de cada desenho, com evidência (página e trecho). O que não é seguro vira "conferir".
+4. O motor de regras (sem IA) monta a hierarquia: o conjunto (pai) chama os filhos pela lista de materiais; desenhos citados só em notas ficam fora da BOM. QTE TOTAL = produto das quantidades na árvore; PESO TOTAL = QTE × PESO UNIT.
+5. Confira as células amarelas (corrigir ou marcar como conferido) e baixe a planilha: colunas B–H preenchidas, o restante fica para o programador; aba "Relatório" com inconsistências e desenhos aplicados.
 
 ## Documentação
 

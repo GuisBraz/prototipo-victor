@@ -35,6 +35,40 @@ Baixa o emulador do Firestore na primeira execução (precisa de internet e Java
 3. Em um terminal: `npm run emulators`.
 4. Em outro: `npm run dev -w @mecabom/web` e abra http://localhost:5173.
 
+## 3a. Alfa: leitura por IA, BOM e planilha (18/10/2026)
+
+Fluxo do usuário: **Projeto (lote) → arrastar arquivos ou pasta → leitura por IA → conferir as células amarelas → baixar a planilha**.
+
+### Chave da API da Anthropic (obrigatória para ler desenhos)
+
+A chave fica **só no backend**. Sem ela, os documentos ficam com a mensagem "A leitura por IA não está configurada".
+
+- **Local (emulador):** crie `functions/.secret.local` (fora do Git) com uma linha:
+  ```
+  ANTHROPIC_API_KEY=sua-chave
+  ```
+  Depois rode `npm run build -w @mecabom/functions` (o build copia esse arquivo para `functions/bundle/`, que o emulador carrega; o deploy ignora `*.local`).
+- **Produção:** `npx firebase functions:secrets:set ANTHROPIC_API_KEY` (só com autorização; ver seção 4).
+
+Modelo e parâmetros em `packages/shared/src/extraction.ts` (`AI_EXTRACTION_CONFIG`: Claude Opus 5.5, esforço `high`, até 12 ampliações por desenho). Prompt em `functions/src/ai/prompts/drawingExtraction.v2.ts`.
+
+### Windows: emulador do Firestore não abre ("Unable to establish loopback connection")
+
+O Java no Windows cria um socket no diretório temporário e falha em alguns perfis. Rode os comandos de emulador com uma pasta temporária curta:
+
+```powershell
+New-Item -ItemType Directory -Force C:\jtmp | Out-Null; $env:TMP="C:\jtmp"; $env:TEMP="C:\jtmp"; npm run emulators
+```
+
+(O mesmo vale para `npm run test:rules` e `npm run test:functions`.)
+
+### O que foi e o que não foi executado (18/10/2026)
+
+- **Executado:** lint, typecheck, builds (web, functions, site) e testes: shared 53, functions 43 + 31 de integração com emulador (79 passaram, 1 pulado: amostras reais), web 8, site 32, regras 27/27.
+- **Planilha:** gerada a partir do modelo `apps/web/public/templates/controle-de-avanco.xlsx` (convertido do `.xls` da empresa pelo Excel) e **aberta no Excel 16** sem reparo: B–H preenchidas, fórmulas do modelo preservadas, amarelo só nas células com dúvida, comentário "CONFERIR", agrupamento por nível.
+- **Navegador com emuladores:** conta, organização, projeto, envio de 2 PDFs (arrastar e soltar), fila → falha clara sem chave; com leituras fictícias gravadas no emulador: BOM hierárquica, correção de peso (recalcula o total), "marcar como conferido" e download do `.xlsx`.
+- **NÃO executado:** nenhuma leitura real com o Claude (a chave da API ainda não existe). A precisão da IA nos desenhos reais **não foi medida**; isso exige a chave e um gabarito (AI_PIPELINE §8). Nenhum deploy.
+
 ## 4. Criar o banco de dados de verdade (Firebase) — passo a passo
 
 **Estado em 17/10/2026 (feito pelo usuário no console):** projeto Firebase **`mecabom`** (ID `mecabom`) no plano **Blaze**, conta de faturamento "Pagamento do Firebase" (`01BD48-60A742-8F3527`, ativada com pagamento antecipado de R$ 200 via Pix, que vira crédito de uso). Orçamento "MECABOM mensal" de **R$ 50/mês** com alertas por e-mail em 50/90/100% (gasto real); só avisa, não bloqueia. Storage `gs://mecabom.firebasestorage.app` e Firestore `(default)` edição Standard, ambos em **`southamerica-east1`**, com as regras padrão fechadas (`if false`). **As regras e índices do repositório ainda não foram publicados, nenhuma function foi publicada e o Authentication ainda não foi configurado (passos 3, 6, 7 e 8 abaixo).** A CLI do Firebase neste computador está logada em outra conta Google, sem acesso ao projeto: antes do deploy, rode `npx firebase login` com a conta dona do `mecabom`.

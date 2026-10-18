@@ -306,3 +306,12 @@ describe("conferência: origem das células, 'conferido' e quantidade avulsa", (
     expect(rec.acks).toEqual(["revision"]);
   });
 });
+
+describe("item sem desenho com peso ilegível", () => {
+  it("mostra o motivo da leitura, não o aviso genérico", () => {
+    const cj = drawing("CJ", {
+      rows: [row("ROL-1", 1, { weightKg: { value: null, check: "Leitura incerta: peso pode ser 2,80 ou 2,8O" } })],
+    });
+    expect(buildBom([cj]).rows[1]!.checks.unitWeight).toMatch(/2,8O/);
+  });
+});

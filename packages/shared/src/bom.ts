@@ -543,7 +543,8 @@ export function buildBom(records: readonly DrawingRecord[]): BomResult {
           row.componentNumber.check ??
           (code ? `Desenho ${code} não está no lote (item comercial ou desenho faltando)` : "Item sem código de desenho (item comercial?)");
         if (row.revision.check) checks.revision = row.revision.check;
-        if (row.weightKg.check && row.weightKg.value !== null) checks.unitWeight = row.weightKg.check;
+        // Motivo da leitura (ex.: "2,8O" ilegível) tem prioridade sobre o aviso genérico.
+        if (row.weightKg.check) checks.unitWeight = row.weightKg.check;
         else if (row.weightKg.value === null) checks.unitWeight = "Peso não informado na lista de materiais";
         rows.push({
           level,

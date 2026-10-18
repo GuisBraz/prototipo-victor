@@ -3,7 +3,7 @@
 Plataforma web industrial que lê PDFs de desenhos mecânicos com IA, extrai campos **com evidência**, monta BOM hierárquica/consolidada com **regras determinísticas**, exige revisão humana e exporta XLSX/CSV. Documentação de referência em `docs/` (PRD, ROADMAP, ARCHITECTURE, DATA_MODEL, AI_PIPELINE, BOM_RULES, SECURITY, SETUP). **Leia o doc relevante antes de mexer numa área.**
 
 ## Usuário e ambiente
-- Fala **português (Brasil)**; responda em português. Windows + PowerShell, pasta `C:\Users\vitin\projetos\mecabom`. Node 24 local (engines pede 22; o aviso é inofensivo). Java (Temurin) instalado para os emuladores.
+- Fala **português (Brasil)**; responda em português. Windows + PowerShell, pasta `C:\Users\Guilherme\Gui\MECABOM\prototipo-victor` (repositório `GuisBraz/prototipo-victor`). Node 24 local (engines pede 22; o aviso é inofensivo). Java (Temurin) instalado para os emuladores.
 - Nível iniciante em terminal: dê comandos prontos e explique o resultado esperado.
 
 ## Regras inegociáveis (do briefing do projeto)
@@ -21,7 +21,7 @@ Plataforma web industrial que lê PDFs de desenhos mecânicos com IA, extrai cam
 npm workspaces: `apps/web` (React 18 + TS + Vite), `apps/site` (site institucional, ver `docs/SITE.md`), `functions` (Cloud Functions gen2, TS), `packages/shared` (Zod, tipos, limites, caminhos — fonte única), `firebase/` (rules, índices, testes de rules). Firebase: Auth, Firestore, Storage; futuro: Cloud Tasks/Run (exigem plano Blaze). TypeScript estrito, ESLint 9 (flat), Vitest.
 - Firestore multi-tenant por subcoleções sob `organizations/{orgId}`; **toda escrita do cliente é negada**, escrita só por callables (Admin SDK) com validação Zod, checagem de papel (`viewer<reviewer<approver<admin`), auditoria e limites anti-abuso.
 - Lógica de negócio fica em handlers puros (`functions/src/*.ts`) que recebem `firestore`/`ObjectStore` por parâmetro; `index.ts` só tem wrappers finos `onCall`.
-- Região assumida `southamerica-east1` (decisão P2 aberta; localização do Firestore é irreversível).
+- Região `southamerica-east1` (decidido; localização do Firestore é irreversível).
 - Modelo/prompt/pipeline são **configuração central versionada** (`modelId`, `promptVersion`, `pipelineVersion`).
 
 ## Comandos (raiz)
@@ -36,7 +36,13 @@ npm run dev -w @mecabom/web   # http://localhost:5173 (apps/web/.env.local: VITE
 ```
 Após mudar `packages/shared`, rode `npm run build:shared`. Após mudar functions para os emuladores: `npm run build -w @mecabom/functions`.
 
-## Estado atual (14/10/2026)
+## Estado atual (18/10/2026) — alfa
+- Objetivo do alfa: ~10 usuários, lotes de ~100 desenhos (PDF digital e escaneado; DWG depois). Saída: planilha **Controle de Avanço** (modelo em `apps/web/public/templates/`), preenchendo só B–H (desenho, posição, rev., descrição, qte total, peso unit., peso total); o resto é do programador. Segunda aba "Relatório".
+- Hierarquia: pai (conjunto) → filho **somente pela lista de materiais**; desenhos citados só em notas/detalhes ficam fora da BOM (relatório). QTE TOTAL multiplicada pela árvore. Dúvida = célula amarela + comentário "CONFERIR".
+- Implementado: motor `packages/shared/src/bom.ts`; extração v2 com ferramenta `view_region` (`functions/src/ai/`); worker `processDocumentJob` + `sweepJobs`; conferência `saveReview` (correção ou `ack.`); UI de envio de pasta, BOM e download (`apps/web/src/pages/BomSection.tsx`, `export/controleWorkbook.ts`).
+- **Nunca rodado contra a API real** (sem chave). Ver `docs/SETUP.md` §3a para o que foi executado e para a correção do emulador no Windows (TMP/TEMP curtos).
+
+## Histórico (14/10/2026)
 - **Fase 0** (docs) e **Fase 1** (auth, organizações, projetos, rules, CI) concluídas; regras do Firestore 14/14 verificadas pelo usuário.
 - **Fase 2a** (commit `3e81c51`): upload de PDF em duas etapas (`requestUpload` → envio ao Storage em `incoming/{uploadId}` → `finalizeUpload`), validação real do PDF (`functions/src/pdf.ts`: assinatura, leitura com pdf-lib, criptografia, páginas, tamanho), hash SHA-256, deduplicação transacional (`documentHashes`), `Document` + `ProcessingJob` (id do job = id do documento) em `queued`, `reprocessDocument`, regras de Firestore/Storage, tela "Documentos" no projeto.
 - **Executado:** typecheck, lint, builds, testes unitários (shared 17, functions 17 incl. validação contra 46 PDFs reais, web 5).
