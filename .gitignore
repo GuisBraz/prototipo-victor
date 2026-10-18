@@ -17,3 +17,7 @@ serviceAccount*.json
 samples/
 desenhos/
 *.tiff
+
+# Segredos locais das functions (chave da API da Anthropic no emulador)
+.secret.local
+*.secret.local

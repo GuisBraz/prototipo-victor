@@ -14,6 +14,9 @@ export const MAX_PROJECTS_PER_ORGANIZATION = 500;
 
 /**
  * Versões do pipeline gravadas nos jobs (reprodutibilidade de resultados).
- * Sobem quando prompt/modelo/etapas mudarem; a Fase 2a ainda não chama IA.
+ * Sobem quando prompt/modelo/etapas mudarem (modelo e prompt: AI_EXTRACTION_CONFIG).
  */
-export const PIPELINE_VERSION = "0.1.0-intake";
+export const PIPELINE_VERSION = "0.2.0-ai-read";
+
+/** Leituras simultâneas (instâncias do worker): protege o limite de requisições da API. */
+export const MAX_CONCURRENT_READINGS = 5;

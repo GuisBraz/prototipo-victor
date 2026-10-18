@@ -87,6 +87,11 @@ export const paths = {
   jobs: (orgId: string, projectId: string) => `organizations/${orgId}/projects/${projectId}/jobs`,
   job: (orgId: string, projectId: string, jobId: string) =>
     `organizations/${orgId}/projects/${projectId}/jobs/${jobId}`,
+  /** Resultado da leitura por IA + correções da conferência (id = id do documento). */
+  extractions: (orgId: string, projectId: string) =>
+    `organizations/${orgId}/projects/${projectId}/extractions`,
+  extraction: (orgId: string, projectId: string, documentId: string) =>
+    `organizations/${orgId}/projects/${projectId}/extractions/${documentId}`,
   /** Índice de unicidade (projectId, contentHash): uso interno do servidor. */
   documentHash: (orgId: string, projectId: string, hash: string) =>
     `organizations/${orgId}/projects/${projectId}/documentHashes/${hash}`,

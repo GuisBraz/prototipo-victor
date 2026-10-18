@@ -61,6 +61,12 @@ service cloud.firestore {
           allow write: if false;
         }
 
+        // Leitura por IA + correções da conferência: lida por membros, escrita só pelo servidor.
+        match /extractions/{documentId} {
+          allow read: if isActiveMember(orgId);
+          allow write: if false;
+        }
+
         // Sessões de upload: o criador acompanha o próprio envio (resultado/rejeição).
         match /uploads/{uploadId} {
           allow read: if isActiveMember(orgId) && resource.data.createdBy == request.auth.uid;

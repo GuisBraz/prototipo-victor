@@ -47,6 +47,8 @@ beforeEach(async () => {
     const base = "organizations/orgA/projects/p1";
     await setDoc(doc(db, `${base}/documents/d1`), { fileName: "a.pdf", status: "queued" });
     await setDoc(doc(db, `${base}/jobs/d1`), { status: "queued" });
+    await setDoc(doc(db, `${base}/extractions/d1`), { output: {}, overrides: {} });
+    await setDoc(doc(db, "organizations/orgB/projects/p2/extractions/x1"), { output: {}, overrides: {} });
     await setDoc(doc(db, `${base}/documentHashes/abc`), { documentId: "d1" });
     await setDoc(doc(db, `${base}/uploads/u1`), { createdBy: "alice", status: "pending", declaredSizeBytes: 1000 });
     await setDoc(doc(db, `${base}/uploads/u2`), { createdBy: "alice", status: "accepted", declaredSizeBytes: 1000 });
@@ -219,5 +221,22 @@ describe("Fase 2: Storage (upload só na sessão aberta pelo servidor)", () => {
     const storage = env.authenticatedContext("alice").storage();
     await assertFails(getBytes(ref(storage, incoming("u1"))));
     await assertFails(deleteObject(ref(storage, incoming("u1"))));
+  });
+});
+
+describe("leitura por IA e conferência (extractions)", () => {
+  it("membro ativo lê a leitura do próprio projeto; outra organização não", async () => {
+    const bob = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(getDoc(doc(bob, "organizations/orgA/projects/p1/extractions/d1")));
+    await assertFails(getDoc(doc(bob, "organizations/orgB/projects/p2/extractions/x1")));
+    await assertFails(getDoc(doc(env.authenticatedContext("dora").firestore(), "organizations/orgA/projects/p1/extractions/d1")));
+  });
+
+  it("ninguém grava leitura ou correção direto (só pela callable saveReview)", async () => {
+    const alice = env.authenticatedContext("alice").firestore();
+    const path = "organizations/orgA/projects/p1/extractions/d1";
+    await assertFails(updateDoc(doc(alice, path), { "overrides.title": { value: "X" } }));
+    await assertFails(setDoc(doc(alice, "organizations/orgA/projects/p1/extractions/novo"), { output: {} }));
+    await assertFails(deleteDoc(doc(alice, path)));
   });
 });

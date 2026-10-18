@@ -10,8 +10,8 @@
  *   - package.json gerado, sem dependências de workspace e com versões exatas
  */
 import { build } from "esbuild";
-import { readFileSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
+import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,8 +20,11 @@ const root = dirname(fileURLToPath(import.meta.url));
 const outdir = join(root, "bundle");
 const require = createRequire(import.meta.url);
 
-/** Pacotes que o Cloud Build instala; todo o resto é embutido. */
-const EXTERNAL = ["firebase-admin", "firebase-functions"];
+/**
+ * Pacotes que o Cloud Build instala; todo o resto é embutido.
+ * pdf.js carrega o worker e o canvas dinamicamente, e @napi-rs/canvas é binário nativo.
+ */
+const EXTERNAL = ["firebase-admin", "firebase-functions", "pdfjs-dist", "@napi-rs/canvas"];
 
 const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
 
@@ -76,5 +79,11 @@ const deployPkg = {
   dependencies: Object.fromEntries(EXTERNAL.map((name) => [name, installedVersion(name)])),
 };
 await writeFile(join(outdir, "package.json"), `${JSON.stringify(deployPkg, null, 2)}\n`);
+
+// Emulador: segredos locais (chave da API) ficam em functions/.secret.local, fora do Git.
+// O deploy ignora "*.local" (firebase.json), então a cópia nunca sobe.
+if (existsSync(join(root, ".secret.local"))) {
+  await copyFile(join(root, ".secret.local"), join(outdir, ".secret.local"));
+}
 
 console.log(`Bundle gerado em ${outdir} (externas: ${Object.entries(deployPkg.dependencies).map(([n, v]) => `${n}@${v}`).join(", ")})`);

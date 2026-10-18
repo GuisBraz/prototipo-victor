@@ -190,3 +190,35 @@ export function sanitizeFileName(raw: string): string {
   const limited = cleaned.slice(0, MAX_FILE_NAME_LENGTH);
   return limited.length > 0 && limited !== "." && limited !== ".." ? limited : "documento.pdf";
 }
+
+// ---------- Leitura por IA e conferência ----------
+
+/** Códigos de falha da leitura mostrados ao usuário (sem detalhes internos). */
+export const PROCESSING_ERROR_MESSAGES_PT: Record<string, string> = {
+  ai_not_configured: "A leitura por IA não está configurada no servidor (chave da API ausente).",
+  ai_refusal: "A IA recusou a leitura deste documento. Confira o arquivo e tente reprocessar.",
+  ai_max_tokens: "O desenho gerou uma resposta grande demais. Tente reprocessar.",
+  ai_invalid_output: "A IA devolveu um resultado fora do formato esperado. Tente reprocessar.",
+  ai_too_many_turns: "A leitura não terminou no número máximo de etapas. Tente reprocessar.",
+  ai_no_output: "A IA não devolveu resultado. Tente reprocessar.",
+  ai_unavailable: "O serviço de IA está indisponível ou sobrecarregado. Tente reprocessar em alguns minutos.",
+  pdf_render_failed: "Não foi possível renderizar o PDF para leitura.",
+  timeout: "A leitura demorou demais e foi interrompida. Tente reprocessar.",
+  internal: "Erro interno ao ler o desenho. Tente reprocessar.",
+};
+
+/** Chave de campo corrigível: campo da legenda ou `rows.<i>.<coluna>` da lista de materiais. */
+export const REVIEW_FIELD_REGEX =
+  /^(drawingNumber|revision|title|weight|rows\.(\d{1,4})\.(itemPosition|componentNumber|revision|description|quantity|weight))$/;
+
+export const saveReviewInputSchema = z.object({
+  organizationId: id,
+  projectId: id,
+  documentId: id,
+  field: z.string().regex(REVIEW_FIELD_REGEX),
+  /** Valor confirmado/corrigido; null = campo vazio (confirmado como ausente). */
+  value: z.string().trim().max(500).nullable(),
+  /** true = desfaz a correção e volta ao valor lido pela IA. */
+  clear: z.boolean().default(false),
+});
+export type SaveReviewInput = z.infer<typeof saveReviewInputSchema>;

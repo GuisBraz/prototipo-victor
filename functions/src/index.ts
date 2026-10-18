@@ -1,10 +1,17 @@
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { logger } from "firebase-functions";
+import { defineSecret } from "firebase-functions/params";
+import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
-import { REGION } from "./config.js";
+import { onSchedule } from "firebase-functions/v2/scheduler";
+import { anthropicCreateMessage } from "./ai/extractDrawing.js";
+import { openPdf } from "./ai/render.js";
+import { MAX_CONCURRENT_READINGS, REGION } from "./config.js";
 import { createOrganizationHandler, createProjectHandler } from "./handlers.js";
 import { createGcsObjectStore } from "./objectStore.js";
+import { processJobHandler, shouldProcess, sweepJobsHandler } from "./processing.js";
+import { saveReviewHandler } from "./reviews.js";
 import {
   finalizeUploadHandler,
   reprocessDocumentHandler,
@@ -70,4 +77,47 @@ export const finalizeUpload = onCall(
 export const reprocessDocument = onCall({ region: REGION }, async (request) => {
   const uid = requireUid(request);
   return reprocessDocumentHandler(getFirestore(), uid, request.data);
+});
+
+/** Chave da API da Anthropic: Secret Manager em produção; functions/.secret.local no emulador. */
+const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
+
+/**
+ * Leitura por IA: dispara quando um job entra em `queued` (upload, reprocessamento ou
+ * redisparo da varredura). Limite de instâncias = limite de leituras simultâneas na API.
+ */
+export const processDocumentJob = onDocumentWritten(
+  {
+    document: "organizations/{orgId}/projects/{projectId}/jobs/{jobId}",
+    region: REGION,
+    timeoutSeconds: 540,
+    memory: "2GiB",
+    maxInstances: MAX_CONCURRENT_READINGS,
+    concurrency: 1,
+    secrets: [anthropicApiKey],
+  },
+  async (event) => {
+    if (!shouldProcess(event.data?.before?.data(), event.data?.after?.data())) return;
+    const { orgId, projectId, jobId } = event.params;
+    const key = anthropicApiKey.value();
+    await processJobHandler(
+      getFirestore(),
+      createGcsObjectStore(),
+      { createMessage: key ? anthropicCreateMessage(key) : null, openPdf },
+      { organizationId: orgId, projectId, jobId },
+      (name, data) => logger.info(name, data),
+    );
+  },
+);
+
+/** Redispara jobs parados na fila e encerra leituras abandonadas. */
+export const sweepJobs = onSchedule({ schedule: "every 5 minutes", region: REGION }, async () => {
+  const result = await sweepJobsHandler(getFirestore());
+  if (result.kicked || result.timedOut) logger.info("jobs.sweep", result);
+});
+
+/** Conferência: corrige ou confirma um campo lido pela IA (papel `reviewer` ou superior). */
+export const saveReview = onCall({ region: REGION }, async (request) => {
+  const uid = requireUid(request);
+  return saveReviewHandler(getFirestore(), uid, request.data);
 });
