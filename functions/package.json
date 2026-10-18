@@ -13,10 +13,13 @@
     "test": "vitest run --no-file-parallelism"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
     "@mecabom/shared": "*",
+    "@napi-rs/canvas": "^0.1.100",
     "firebase-admin": "^13.0.0",
     "firebase-functions": "^7.4.0",
-    "pdf-lib": "^1.17.1"
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^4.10.38"
   },
   "devDependencies": {
     "esbuild": "^0.25.12",

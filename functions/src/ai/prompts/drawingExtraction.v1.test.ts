@@ -1,5 +1,4 @@
 import {
-  AI_EXTRACTION_CONFIG,
   COMPONENT_COLUMNS,
   DRAWING_DOCUMENT_TYPES,
   EXTRACTION_ISSUE_TYPES,
@@ -15,15 +14,16 @@ import {
   escapeDocumentText,
 } from "./drawingExtraction.v1.js";
 
-describe("prompt de extração v1", () => {
-  it("é a versão configurada em AI_EXTRACTION_CONFIG", () => {
-    expect(AI_EXTRACTION_CONFIG.promptVersion).toBe(PROMPT_VERSION);
+describe("prompt de extração v1 (arquivado; a configuração usa a v2)", () => {
+  it("mantém a própria versão", () => {
+    expect(PROMPT_VERSION).toBe("drawing-extraction.v1");
   });
 
   it("explica todos os campos, colunas e valores de enum do contrato", () => {
     const terms = [
       ...TITLE_BLOCK_FIELDS,
-      ...COMPONENT_COLUMNS,
+      // Colunas da v1 (revision e weight entraram na v2).
+      ...COMPONENT_COLUMNS.filter((c) => c !== "revision" && c !== "weight"),
       ...DRAWING_DOCUMENT_TYPES,
       ...EXTRACTION_ISSUE_TYPES,
       ...EXTRACTION_VALUE_STATUSES,
